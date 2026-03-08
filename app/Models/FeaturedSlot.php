@@ -14,6 +14,7 @@ class FeaturedSlot extends Model
         'ends_at',
         'amount_paid',
         'stripe_payment_id',
+        'polar_order_id',
     ];
 
     protected function casts(): array

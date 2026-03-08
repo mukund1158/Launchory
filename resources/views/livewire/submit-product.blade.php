@@ -4,6 +4,7 @@ use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
 use App\Models\Product;
 use App\Models\Category;
+use App\Services\PolarCheckoutService;
 
 new class extends Component {
     use WithFileUploads;
@@ -159,7 +160,7 @@ new class extends Component {
         };
     }
 
-    public function submit(): void
+    public function submit(): ?\Illuminate\Http\RedirectResponse
     {
         $logoPath = null;
         if ($this->logo) {
@@ -179,17 +180,40 @@ new class extends Component {
             'logo' => $logoPath,
             'listing_type' => $this->listing_type,
             'launch_date' => $this->listing_type !== 'directory' ? $this->launch_date : null,
-            'status' => 'pending',
+            'status' => $this->isPaidPlan() ? 'pending_payment' : 'pending',
             'is_featured' => $this->isFeaturedPlan(),
         ]);
 
+        if ($this->isPaidPlan()) {
+            try {
+                $service = PolarCheckoutService::make();
+                $successUrl = route('submit.success', ['product' => $product->id]);
+                $returnUrl = route('submit');
+                $checkoutUrl = $service->createCheckoutUrl(
+                    $product,
+                    auth()->user(),
+                    $this->plan,
+                    $successUrl,
+                    $returnUrl
+                );
+                $this->dispatch('redirect-to-checkout', url: $checkoutUrl);
+                return null;
+            } catch (\Throwable $e) {
+                report($e);
+                $this->addError('plan', $e->getMessage());
+                return null;
+            }
+        }
+
         $this->step = 6;
+
+        return null;
     }
 }
 
 ?>
 
-<div class="max-w-2xl mx-auto">
+<div class="max-w-2xl mx-auto" x-data x-on:redirect-to-checkout.window="const u = $event.detail?.url || $event.detail; if (u) window.location.href = u">
     {{-- Step indicator --}}
     @if($step <= $totalSteps)
     <div class="mb-8">
@@ -576,8 +600,13 @@ new class extends Component {
             <div class="mt-6 p-4 bg-amber-50 rounded-xl border border-amber-100 flex items-start gap-3">
                 <span class="text-lg">⏳</span>
                 <div>
-                    <p class="text-sm font-semibold text-amber-800">Review within 24 hours</p>
-                    <p class="text-sm text-amber-700 mt-0.5">Our team will review your submission and email you once it's approved.{{ $this->isPaidPlan() ? ' A secure payment link will be sent after approval.' : '' }}</p>
+                    @if($this->isPaidPlan())
+                        <p class="text-sm font-semibold text-amber-800">Pay now to complete</p>
+                        <p class="text-sm text-amber-700 mt-0.5">Click "Submit to Launchory" to open the secure payment page. Your listing will go live after payment succeeds.</p>
+                    @else
+                        <p class="text-sm font-semibold text-amber-800">Review within 24 hours</p>
+                        <p class="text-sm text-amber-700 mt-0.5">Our team will review your submission and email you once it's approved.</p>
+                    @endif
                 </div>
             </div>
         </div>
@@ -620,3 +649,12 @@ new class extends Component {
     </div>
     @endif
 </div>
+
+@script
+<script>
+    Livewire.on('redirect-to-checkout', (payload) => {
+        const url = typeof payload === 'string' ? payload : (payload?.url ?? payload?.[0]);
+        if (url) window.location.href = url;
+    });
+</script>
+@endscript

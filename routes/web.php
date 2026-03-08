@@ -30,9 +30,13 @@ Route::get('/badges/{product:slug}.svg', [BadgeController::class, 'generate'])->
 Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe'])->name('newsletter.subscribe');
 Route::get('/newsletter/confirm/{token}', [NewsletterController::class, 'confirm'])->name('newsletter.confirm');
 
+// Polar webhook (no auth, no CSRF)
+Route::post('/webhooks/polar', App\Http\Controllers\PolarWebhookController::class)->name('webhooks.polar');
+
 // Auth required
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/submit', [SubmitController::class, 'index'])->name('submit');
+    Route::get('/submit/success/{product}', [SubmitController::class, 'success'])->name('submit.success');
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard/products', [DashboardController::class, 'products'])->name('dashboard.products');
     Route::post('/vote/{product}', [VoteController::class, 'toggle'])->name('vote.toggle');

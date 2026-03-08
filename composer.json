@@ -15,6 +15,7 @@
         "laravel/tinker": "^2.10.1",
         "livewire/livewire": "^4.2",
         "livewire/volt": "^1.7.0",
+        "polar-sh/sdk": "^0.8.0",
         "spatie/laravel-medialibrary": "^11.21",
         "spatie/laravel-permission": "^7.2",
         "spatie/laravel-sitemap": "^7.4",
