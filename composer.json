@@ -11,6 +11,7 @@
         "filament/filament": "^5.3",
         "laravel/cashier": "^16.3",
         "laravel/framework": "^12.0",
+        "laravel/socialite": "^5.24",
         "laravel/tinker": "^2.10.1",
         "livewire/livewire": "^4.2",
         "livewire/volt": "^1.7.0",

@@ -23,6 +23,8 @@ class User extends Authenticatable
         'bio',
         'twitter_handle',
         'website_url',
+        'provider',
+        'provider_id',
     ];
 
     protected $hidden = [
