@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -97,9 +98,24 @@ class Product extends Model
         return $query->where('is_featured', true)->where('featured_until', '>=', now()->toDateString());
     }
 
+    /**
+     * Scope to products live for the current launch day.
+     * Launch day starts at configurable hour (default 12:00 PM) in app timezone.
+     */
     public function scopeToday($query)
     {
-        return $query->where('launch_date', now()->toDateString());
+        return $query->where('launch_date', self::currentLaunchDate());
+    }
+
+    /**
+     * Current launch date: today if we're at or past noon (in app timezone), else yesterday.
+     */
+    public static function currentLaunchDate(): string
+    {
+        $now = Carbon::now(config('app.timezone'));
+        $noonToday = $now->copy()->startOfDay()->setTime(config('app.launch_hour', 12), 0, 0);
+
+        return $now->gte($noonToday) ? $now->toDateString() : $now->copy()->subDay()->toDateString();
     }
 
     public function scopeByVotes($query)

@@ -65,7 +65,16 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'Asia/Kolkata'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Launch time (hour)
+    |--------------------------------------------------------------------------
+    | Products go live at this hour (0-23) on their launch_date in app timezone.
+    | Default 12 = noon (12:00 PM).
+    */
+    'launch_hour' => (int) env('LAUNCH_HOUR', 12),
 
     /*
     |--------------------------------------------------------------------------
