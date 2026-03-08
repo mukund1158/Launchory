@@ -9,10 +9,20 @@ class LaunchController extends Controller
 {
     public function index()
     {
-        $launchPeriod = LaunchPeriod::current();
-        $products = Product::approved()->launches()->today()->byVotes()->with(['user', 'category', 'badge'])->get();
+        $all = Product::approved()
+            ->launches()
+            ->today()
+            ->byVotes()
+            ->with(['user', 'category', 'badge'])
+            ->get();
 
-        return view('pages.launches.index', compact('launchPeriod', 'products'));
+        $top3 = $all->take(3)->values();
+        $top3Ids = $top3->pluck('id')->all();
+        $featured = $all->where('is_featured', true)->whereNotIn('id', $top3Ids)->values();
+        $featuredIds = $featured->pluck('id')->all();
+        $others = $all->whereNotIn('id', array_merge($top3Ids, $featuredIds))->values();
+
+        return view('pages.launches.index', compact('top3', 'featured', 'others'));
     }
 
     public function archive()
