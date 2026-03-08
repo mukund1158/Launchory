@@ -17,7 +17,7 @@
             @if($winners->count() > 0)
                 <div class="space-y-3">
                     @foreach($winners as $product)
-                        <a href="{{ route('product.show', $product->slug) }}" class="group flex items-center gap-4 p-4 rounded-2xl border border-gray-100 bg-white hover:border-amber-200 hover:shadow-md transition-all">
+                        <a href="{{ $product->website_url ?: route('product.show', $product->slug) }}" target="_blank" rel="noopener noreferrer" class="group flex items-center gap-4 p-4 rounded-2xl border border-gray-100 bg-white hover:border-amber-200 hover:shadow-md transition-all">
                             <span class="text-2xl shrink-0">{{ $product->badge->badge_emoji }}</span>
                             <img src="{{ $product->logo_url }}" alt="{{ $product->name }}" class="w-12 h-12 rounded-xl object-cover border border-gray-100 shadow-sm shrink-0" />
                             <div class="flex-1 min-w-0">

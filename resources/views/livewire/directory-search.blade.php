@@ -8,12 +8,14 @@ new class extends Component {
     use WithPagination;
 
     public string $search = '';
-    public string $pricing = '';
     public string $sort = 'newest';
     public int $categoryId = 0;
 
+    /** @var \Illuminate\Support\Collection */
+    public $categories;
+
     public function updatingSearch(): void { $this->resetPage(); }
-    public function updatingPricing(): void { $this->resetPage(); }
+    public function updatingCategoryId(): void { $this->resetPage(); }
     public function updatingSort(): void { $this->resetPage(); }
 
     public function with(): array
@@ -32,65 +34,50 @@ new class extends Component {
                 $q2->where('name', 'like', "%{$this->search}%")
                    ->orWhere('tagline', 'like', "%{$this->search}%")
             ))
-            ->when($this->pricing, fn($q) => $q->where('pricing', $this->pricing))
             ->when($this->categoryId, fn($q) => $q->where('category_id', $this->categoryId))
+            ->orderBy('is_featured', 'desc')
             ->when($this->sort === 'newest', fn($q) => $q->latest())
             ->when($this->sort === 'votes', fn($q) => $q->orderBy('vote_count', 'desc'))
-            ->orderBy('is_featured', 'desc')
-            ->paginate(12);
+            ->paginate(18);
     }
 }
 
 ?>
 
 <div>
-    {{-- Search + Filters --}}
+    {{-- Search + Category in one line --}}
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5 mb-6">
-        <div class="flex flex-col gap-3">
-            {{-- Search bar --}}
-            <div class="relative">
-                <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                </svg>
-                <input
-                    wire:model.live.debounce.300ms="search"
-                    type="text"
-                    placeholder="Search products by name or tagline..."
-                    class="w-full rounded-xl border border-gray-200 pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent bg-gray-50/50 placeholder-gray-400"
-                />
-                @if($search)
-                    <button wire:click="$set('search', '')" class="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center transition-colors">
-                        <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
-                @endif
-            </div>
-
-            {{-- Filter row --}}
-            <div class="flex flex-wrap items-center gap-2">
-                <span class="text-xs text-gray-400 font-medium mr-1">Filters:</span>
-
-                {{-- Pricing pills --}}
-                <div class="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-100">
-                    <button wire:click="$set('pricing', '')"
-                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all {{ $pricing === '' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
-                        All
-                    </button>
-                    <button wire:click="$set('pricing', 'free')"
-                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all {{ $pricing === 'free' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
-                        Free
-                    </button>
-                    <button wire:click="$set('pricing', 'freemium')"
-                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all {{ $pricing === 'freemium' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
-                        Freemium
-                    </button>
-                    <button wire:click="$set('pricing', 'paid')"
-                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all {{ $pricing === 'paid' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
-                        Paid
-                    </button>
+        <div class="flex flex-col sm:flex-row gap-3">
+            {{-- Search input + Category dropdown (single line on sm+) --}}
+            <div class="flex flex-1 min-w-0 gap-3">
+                <div class="relative flex-1 min-w-0">
+                    <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    <input
+                        wire:model.live.debounce.300ms="search"
+                        type="text"
+                        placeholder="Search products by name or tagline..."
+                        class="w-full rounded-xl border border-gray-200 pl-10 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent bg-gray-50/50 placeholder-gray-400"
+                    />
+                    @if($search)
+                        <button wire:click="$set('search', '')" class="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center transition-colors">
+                            <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    @endif
                 </div>
-
-                {{-- Sort --}}
-                <div class="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-100 ml-auto">
+                <select wire:model.live="categoryId" id="category-filter"
+                    class="shrink-0 w-full sm:w-auto rounded-xl border border-gray-200 bg-gray-50/50 px-3 py-2.5 pr-9 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent min-w-[10rem]">
+                    <option value="0">All categories</option>
+                    @foreach($categories ?? [] as $cat)
+                        <option value="{{ $cat->id }}">{{ $cat->icon }} {{ $cat->name }} ({{ $cat->products_count }})</option>
+                    @endforeach
+                </select>
+            </div>
+            {{-- Sort --}}
+            <div class="flex items-center gap-2 shrink-0">
+                <span class="text-xs text-gray-400 font-medium hidden sm:inline">Sort:</span>
+                <div class="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-100">
                     <button wire:click="$set('sort', 'newest')"
                         class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 {{ $sort === 'newest' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -122,9 +109,9 @@ new class extends Component {
     </div>
 
     {{-- Product grid --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" wire:loading.class="opacity-50">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" wire:loading.class="opacity-50">
         @forelse($products as $product)
-            <a href="{{ route('product.show', $product->slug) }}" class="group relative bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
+            <a href="{{ $product->website_url ?: route('product.show', $product->slug) }}" target="_blank" rel="noopener noreferrer" class="group relative bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
                 {{-- Featured ribbon --}}
                 @if($product->is_featured)
                     <div class="absolute top-0 right-0 z-10">
@@ -152,10 +139,6 @@ new class extends Component {
                                 {{ $product->category->icon }}
                                 <span class="hidden sm:inline">{{ $product->category->name }}</span>
                             </span>
-                            <span class="text-xs px-2.5 py-1 rounded-lg font-medium
-                                {{ $product->pricing === 'free' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : ($product->pricing === 'freemium' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-purple-50 text-purple-600 border border-purple-100') }}">
-                                {{ ucfirst($product->pricing) }}
-                            </span>
                         </div>
                         <div class="flex items-center gap-3">
                             @if($product->vote_count > 0)
@@ -176,9 +159,9 @@ new class extends Component {
                 <div class="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl mx-auto mb-4">🔍</div>
                 <p class="text-lg font-bold text-gray-800">No products found</p>
                 <p class="text-sm text-gray-400 mt-1 mb-5">Try adjusting your search or filters</p>
-                @if($search || $pricing)
-                    <button wire:click="$set('search', ''); $set('pricing', '')" class="text-sm font-semibold text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-4 py-2 rounded-xl transition-all">
-                        Clear all filters
+                @if($search)
+                    <button wire:click="$set('search', '')" class="text-sm font-semibold text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-4 py-2 rounded-xl transition-all">
+                        Clear search
                     </button>
                 @endif
             </div>

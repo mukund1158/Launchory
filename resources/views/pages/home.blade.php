@@ -60,7 +60,7 @@
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         @foreach($products as $product)
-                        <a href="{{ route('product.show', $product->slug) }}" class="group flex items-start gap-3 p-4 rounded-xl border border-gray-100 hover:border-amber-200 hover:shadow-md transition-all">
+                        <a href="{{ $product->website_url ?: route('product.show', $product->slug) }}" target="_blank" rel="noopener noreferrer" class="group flex items-start gap-3 p-4 rounded-xl border border-gray-100 hover:border-amber-200 hover:shadow-md transition-all">
                             <img src="{{ $product->logo_url }}" alt="{{ $product->name }}" class="w-11 h-11 rounded-xl object-cover border border-gray-100 shrink-0" />
                             <div class="min-w-0 flex-1">
                                 <h3 class="font-semibold text-gray-900 group-hover:text-amber-600 truncate">{{ $product->name }}</h3>
@@ -107,7 +107,7 @@
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 @foreach($latestDirectory as $product)
-                <a href="{{ route('product.show', $product->slug) }}" class="group flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-amber-200 hover:shadow-sm transition-all">
+                <a href="{{ $product->website_url ?: route('product.show', $product->slug) }}" target="_blank" rel="noopener noreferrer" class="group flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-amber-200 hover:shadow-sm transition-all">
                     <img src="{{ $product->logo_url }}" alt="{{ $product->name }}" class="w-10 h-10 rounded-lg object-cover border border-gray-100 shrink-0" />
                     <div class="min-w-0 flex-1">
                         <h3 class="font-semibold text-gray-900 group-hover:text-amber-600 truncate text-sm">{{ $product->name }}</h3>
@@ -130,7 +130,7 @@
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 @foreach($latestWinners as $product)
-                <a href="{{ route('product.show', $product->slug) }}" class="group flex items-center gap-3 p-4 rounded-xl bg-white border border-gray-100 hover:border-amber-200 hover:shadow-sm transition-all">
+                <a href="{{ $product->website_url ?: route('product.show', $product->slug) }}" target="_blank" rel="noopener noreferrer" class="group flex items-center gap-3 p-4 rounded-xl bg-white border border-gray-100 hover:border-amber-200 hover:shadow-sm transition-all">
                     <div class="relative shrink-0">
                         <img src="{{ $product->logo_url }}" alt="{{ $product->name }}" class="w-12 h-12 rounded-xl object-cover border border-gray-100" />
                         <span class="absolute -top-1 -right-1 text-sm">{{ $product->badge->badge_emoji }}</span>

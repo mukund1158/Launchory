@@ -23,7 +23,7 @@
         {{-- Info --}}
         <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
-                <a href="{{ route('product.show', $product->slug) }}" class="font-bold text-gray-900 hover:text-amber-600 transition-colors text-base sm:text-lg truncate">
+                <a href="{{ $product->website_url ?: route('product.show', $product->slug) }}" target="_blank" rel="noopener noreferrer" class="font-bold text-gray-900 hover:text-amber-600 transition-colors text-base sm:text-lg truncate">
                     {{ $product->name }}
                 </a>
                 @if($product->is_featured && !$showMedal)

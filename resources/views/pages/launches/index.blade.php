@@ -21,7 +21,7 @@
             @if($featured->count() > 0)
                 <div class="space-y-4">
                     @foreach($featured as $product)
-                        <a href="{{ route('product.show', $product->slug) }}" class="block group">
+                        <a href="{{ $product->website_url ?: route('product.show', $product->slug) }}" target="_blank" rel="noopener noreferrer" class="block group">
                             <div class="bg-white rounded-2xl border border-amber-100/80 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4 hover:border-amber-200 hover:shadow-lg transition-all">
                                 <div class="flex items-center gap-4 flex-1 min-w-0">
                                     <img src="{{ $product->logo_url }}" alt="{{ $product->name }}" class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-white shadow-md shrink-0" />
@@ -78,7 +78,7 @@
                             </div>
                             <img src="{{ $product->logo_url }}" alt="{{ $product->name }}" class="w-12 h-12 rounded-xl object-cover border border-gray-100 shrink-0" />
                             <div class="flex-1 min-w-0">
-                                <a href="{{ route('product.show', $product->slug) }}" class="font-bold text-gray-900 group-hover:text-amber-600 truncate block">{{ $product->name }}</a>
+                                <a href="{{ $product->website_url ?: route('product.show', $product->slug) }}" target="_blank" rel="noopener noreferrer" class="font-bold text-gray-900 group-hover:text-amber-600 truncate block">{{ $product->name }}</a>
                                 <p class="text-sm text-gray-500 truncate mt-0.5">{{ $product->tagline }}</p>
                             </div>
                             <span class="hidden sm:inline text-xs bg-gray-50 text-gray-500 px-2.5 py-1 rounded-full shrink-0">{{ $product->category->icon }} {{ $product->category->name }}</span>
