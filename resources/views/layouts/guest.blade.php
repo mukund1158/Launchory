@@ -4,6 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
+        <link rel="icon" type="image/png" href="{{ asset('images/logo/launchory-favicon.png') }}">
 
         <title>{{ config('app.name', 'Launchory') }}</title>
 
@@ -26,9 +27,8 @@
 
                 {{-- Logo --}}
                 <div class="relative">
-                    <a href="{{ route('home') }}" class="flex items-center gap-2.5">
-                        <span class="text-3xl">🚀</span>
-                        <span class="text-2xl font-extrabold text-white">Launchory</span>
+                    <a href="{{ route('home') }}" class="inline-flex items-center">
+                        <img src="{{ asset('images/logo/launchory-logo.png') }}" alt="Launchory" class="h-48 w-auto" />
                     </a>
                 </div>
 
@@ -76,9 +76,8 @@
             <div class="w-full lg:w-1/2 flex flex-col justify-center items-center px-6 sm:px-12 py-12 bg-white">
                 {{-- Mobile logo --}}
                 <div class="lg:hidden mb-8">
-                    <a href="{{ route('home') }}" class="flex items-center gap-2">
-                        <span class="text-2xl">🚀</span>
-                        <span class="text-xl font-extrabold text-amber-500">Launchory</span>
+                    <a href="{{ route('home') }}" class="inline-flex items-center">
+                        <img src="{{ asset('images/logo/launchory-logo.png') }}" alt="Launchory" class="h-9 w-auto" />
                     </a>
                 </div>
 

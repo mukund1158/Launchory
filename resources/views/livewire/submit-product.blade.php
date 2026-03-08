@@ -5,27 +5,29 @@ use Livewire\WithFileUploads;
 use App\Models\Product;
 use App\Models\Category;
 use App\Services\PolarCheckoutService;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 new class extends Component {
     use WithFileUploads;
 
     public int $step = 1;
-    public int $totalSteps = 5;
+    public int $totalSteps = 4;
 
-    // Step 1: Product Info
+    // Step 1: Product + Details (combined)
     public string $name = '';
     public string $tagline = '';
     public string $website_url = '';
     public int $category_id = 0;
-    public string $pricing = 'free';
-
-    // Step 2: Details
     public string $description = '';
     public string $twitter_handle = '';
     public string $maker_comment = '';
     public $logo;
+    /** Logo URL from fetched meta (og:image); used if no file uploaded */
+    public string $logoUrl = '';
 
-    // Step 3: Listing Type + Plan combined
+    // Step 2: Listing Type
     public string $listing_type = 'launch';
     public string $launch_date = '';
     public string $plan = 'free';
@@ -51,18 +53,102 @@ new class extends Component {
     {
         $this->validateStep();
         $this->step++;
+        $this->dispatch('scroll-to-step');
     }
 
     public function prevStep(): void
     {
         $this->step--;
+        $this->dispatch('scroll-to-step');
     }
 
     public function goToStep(int $target): void
     {
-        if ($target < $this->step) {
+        if ($target >= 1 && $target <= $this->totalSteps && $target < $this->step) {
             $this->step = $target;
+            $this->dispatch('scroll-to-step');
         }
+    }
+
+    public function updatedLogo(): void
+    {
+        if ($this->logo) {
+            $this->logoUrl = '';
+        }
+    }
+
+    /**
+     * Fetch meta (title, description) and favicon from website_url and fill fields.
+     */
+    public function fetchFromUrl(): void
+    {
+        $this->validate(['website_url' => 'required|url']);
+        $url = $this->website_url;
+        if (! Str::startsWith(strtolower($url), ['http://', 'https://'])) {
+            $url = 'https://' . $url;
+        }
+        try {
+            $response = Http::timeout(10)
+                ->withHeaders(['User-Agent' => 'LaunchoryBot/1.0 (metadata fetcher)'])
+                ->get($url);
+            if (! $response->successful()) {
+                $this->addError('website_url', 'Could not fetch the URL. Check the address and try again.');
+                return;
+            }
+            $html = $response->body();
+            $baseUrl = parse_url($url, PHP_URL_SCHEME) . '://' . parse_url($url, PHP_URL_HOST);
+            $title = $this->metaContent($html, 'og:title') ?: $this->metaContent($html, 'twitter:title');
+            $desc = $this->metaContent($html, 'og:description') ?: $this->metaContent($html, 'twitter:description') ?: $this->metaContent($html, 'description', 'name');
+            if ($title && ! $this->tagline) {
+                $this->tagline = Str::limit($title, 100);
+            }
+            if ($desc && ! $this->description) {
+                $this->description = Str::limit($desc, 5000);
+            }
+            $favicon = $this->extractFavicon($html, $baseUrl);
+            if ($favicon) {
+                $this->logoUrl = $favicon;
+            }
+            $this->resetErrorBag('website_url');
+        } catch (\Throwable $e) {
+            Log::warning('fetchFromUrl failed', ['url' => $url, 'error' => $e->getMessage()]);
+            $this->addError('website_url', 'Could not fetch the URL. You can still fill the form manually.');
+        }
+    }
+
+    /**
+     * Extract favicon URL from HTML or fallback to /favicon.ico.
+     */
+    private function extractFavicon(string $html, string $baseUrl): ?string
+    {
+        if (preg_match('/<link[^>]+rel=["\'](?:shortcut\s+)?icon["\'][^>]+href=["\']([^"\']+)["\']/i', $html, $m)) {
+            return $this->resolveUrl(trim($m[1]), $baseUrl);
+        }
+        if (preg_match('/<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\'](?:shortcut\s+)?icon["\']/i', $html, $m)) {
+            return $this->resolveUrl(trim($m[1]), $baseUrl);
+        }
+        return $this->resolveUrl('/favicon.ico', $baseUrl);
+    }
+
+    private function metaContent(string $html, string $property, string $attr = 'property'): ?string
+    {
+        if (preg_match('/<meta[^>]+' . preg_quote($attr, '/') . '=["\']' . preg_quote($property, '/') . '["\'][^>]+content=["\']([^"\']+)["\']/i', $html, $m)) {
+            return trim(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        }
+        if (preg_match('/<meta[^>]+content=["\']([^"\']+)["\'][^>]+' . preg_quote($attr, '/') . '=["\']' . preg_quote($property, '/') . '["\']/i', $html, $m)) {
+            return trim(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        }
+        return null;
+    }
+
+    private function resolveUrl(string $url, string $baseUrl): string
+    {
+        $url = trim($url);
+        if (Str::startsWith(strtolower($url), ['http://', 'https://'])) {
+            return $url;
+        }
+        $base = rtrim($baseUrl, '/');
+        return $base . (str_starts_with($url, '/') ? $url : '/' . $url);
     }
 
     public function getAvailablePlans(): array
@@ -143,17 +229,14 @@ new class extends Component {
                 'tagline' => 'required|min:10|max:100',
                 'website_url' => 'required|url',
                 'category_id' => 'required|exists:categories,id',
-                'pricing' => 'required|in:free,freemium,paid',
-            ]),
-            2 => $this->validate([
                 'description' => 'required|min:30',
                 'logo' => 'nullable|image|max:2048',
             ]),
-            3 => $this->validate([
+            2 => $this->validate([
                 'listing_type' => 'required|in:launch,directory,both',
                 'launch_date' => 'required_if:listing_type,launch,both|nullable|date|after_or_equal:today',
             ]),
-            4 => $this->validate([
+            3 => $this->validate([
                 'plan' => ['required', 'in:' . implode(',', $validPlans)],
             ]),
             default => null,
@@ -165,6 +248,22 @@ new class extends Component {
         $logoPath = null;
         if ($this->logo) {
             $logoPath = $this->logo->store('logos', 'public');
+        } elseif ($this->logoUrl) {
+            try {
+                $response = Http::timeout(15)->withHeaders(['User-Agent' => 'LaunchoryBot/1.0'])->get($this->logoUrl);
+                if ($response->successful() && Str::startsWith($response->header('Content-Type', ''), 'image/')) {
+                    $ext = Str::after($response->header('Content-Type'), 'image/');
+                    $ext = Str::before($ext, ';');
+                    if (! in_array(strtolower($ext), ['jpeg', 'jpg', 'png', 'gif', 'webp'], true)) {
+                        $ext = 'png';
+                    }
+                    $filename = Str::random(40) . '.' . $ext;
+                    \Illuminate\Support\Facades\Storage::disk('public')->put('logos/' . $filename, $response->body());
+                    $logoPath = 'logos/' . $filename;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Logo URL download failed', ['url' => $this->logoUrl, 'error' => $e->getMessage()]);
+            }
         }
 
         $product = Product::create([
@@ -173,7 +272,7 @@ new class extends Component {
             'tagline' => $this->tagline,
             'website_url' => $this->website_url,
             'category_id' => $this->category_id,
-            'pricing' => $this->pricing,
+            'pricing' => 'free',
             'description' => $this->description,
             'twitter_handle' => $this->twitter_handle,
             'maker_comment' => $this->maker_comment,
@@ -213,14 +312,14 @@ new class extends Component {
 
 ?>
 
-<div class="max-w-2xl mx-auto" x-data x-on:redirect-to-checkout.window="const u = $event.detail?.url || $event.detail; if (u) window.location.href = u">
+<div id="submit-product-form" class="max-w-4xl mx-auto" x-data x-on:redirect-to-checkout.window="const u = $event.detail?.url || $event.detail; if (u) window.location.href = u">
     {{-- Step indicator --}}
     @if($step <= $totalSteps)
     <div class="mb-8">
         {{-- Step dots --}}
         <div class="flex items-center justify-between mb-6">
             @php
-                $labels = ['Product', 'Details', 'Listing', 'Plan', 'Review'];
+                $labels = ['Product & details', 'Listing', 'Plan', 'Review'];
             @endphp
             @foreach($labels as $i => $label)
                 @php $num = $i + 1; @endphp
@@ -248,41 +347,97 @@ new class extends Component {
     </div>
     @endif
 
-    {{-- Step 1: Product Info --}}
+    {{-- Step 1: Product + Details (combined) --}}
     @if($step === 1)
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div class="px-8 py-5 border-b border-gray-100 bg-gray-50/50">
+        <div class="px-8 py-6 border-b border-gray-100 bg-gray-50/50">
             <h2 class="text-lg font-bold text-gray-900">Tell us about your product</h2>
-            <p class="text-sm text-gray-500 mt-0.5">Basic information to get started</p>
+            <p class="text-sm text-gray-500 mt-1">Add your website and details below.</p>
         </div>
-        <div class="p-8 space-y-5">
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Product Name <span class="text-red-400">*</span></label>
-                <input wire:model="name" type="text" placeholder="e.g. Notion, Figma, Linear"
-                       class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent focus:bg-white transition-all" />
-                @error('name') <p class="text-red-500 text-xs mt-1.5">{{ $message }}</p> @enderror
-            </div>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Tagline <span class="text-red-400">*</span> <span class="text-gray-400 font-normal text-xs">(max 100 chars)</span></label>
-                <input wire:model="tagline" type="text" placeholder="A short catchy description of what it does"
-                       class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent focus:bg-white transition-all" />
-                <div class="flex items-center justify-between mt-1.5">
-                    @error('tagline') <p class="text-red-500 text-xs">{{ $message }}</p> @else <span></span> @enderror
-                    <span class="text-xs {{ strlen($tagline) > 80 ? (strlen($tagline) > 100 ? 'text-red-500' : 'text-amber-500') : 'text-gray-400' }}">{{ strlen($tagline) }}/100</span>
-                </div>
-            </div>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Website URL <span class="text-red-400">*</span></label>
-                <div class="relative">
-                    <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
-                    <input wire:model="website_url" type="url" placeholder="https://yourproduct.com"
-                           class="w-full rounded-xl border border-gray-200 pl-10 pr-4 py-3 text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent focus:bg-white transition-all" />
+        <div class="p-8">
+            {{-- Website + Fetch --}}
+            <div class="mb-8">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Website URL <span class="text-red-400">*</span></label>
+                <div class="flex gap-3">
+                    <div class="relative flex-1 min-w-0">
+                        <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                        <input wire:model="website_url" type="url" placeholder="https://yourproduct.com"
+                               class="w-full rounded-xl border border-gray-200 pl-10 pr-4 py-3 text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent focus:bg-white transition-all" />
+                    </div>
+                    <button type="button" wire:click="fetchFromUrl" wire:loading.attr="disabled"
+                            class="shrink-0 flex items-center justify-center gap-2 min-w-[7rem] px-5 py-3 rounded-xl border border-amber-300 bg-amber-50 text-amber-700 font-medium text-sm hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-70 disabled:cursor-not-allowed transition-all">
+                        <svg wire:loading wire:target="fetchFromUrl" class="w-4 h-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                        <span wire:loading.remove wire:target="fetchFromUrl">Fetch</span>
+                        <span wire:loading wire:target="fetchFromUrl">Fetching…</span>
+                    </button>
                 </div>
                 @error('website_url') <p class="text-red-500 text-xs mt-1.5">{{ $message }}</p> @enderror
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+            {{-- Identity: Name, Tagline --}}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+                <div class="sm:col-span-2">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Product Name <span class="text-red-400">*</span></label>
+                    <input wire:model="name" type="text" placeholder="e.g. Notion, Figma, Linear"
+                           class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent focus:bg-white transition-all" />
+                    @error('name') <p class="text-red-500 text-xs mt-1.5">{{ $message }}</p> @enderror
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Tagline <span class="text-red-400">*</span></label>
+                    <input wire:model="tagline" type="text" placeholder="Short catchy description"
+                           class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent focus:bg-white transition-all" />
+                    <div class="flex items-center justify-between mt-1.5">
+                        @error('tagline') <p class="text-red-500 text-xs">{{ $message }}</p> @else <span></span> @enderror
+                        <span class="text-xs {{ strlen($tagline) > 80 ? (strlen($tagline) > 100 ? 'text-red-500' : 'text-amber-500') : 'text-gray-400' }}">{{ strlen($tagline) }}/100</span>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Description --}}
+            <div class="mb-8">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Description <span class="text-red-400">*</span></label>
+                <textarea wire:model="description" rows="5" placeholder="Describe what your product does, who it's for, and what makes it unique..."
+                          class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent focus:bg-white transition-all resize-y min-h-[7rem]"></textarea>
+                @error('description') <p class="text-red-500 text-xs mt-1.5">{{ $message }}</p> @enderror
+            </div>
+
+            {{-- Logo --}}
+            <div class="mb-8">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Product Logo</label>
+                <div class="flex flex-wrap items-start gap-6">
+                    <div class="shrink-0">
+                        @if($logo)
+                            <img src="{{ $logo->temporaryUrl() }}" alt="" class="w-20 h-20 rounded-xl object-cover border border-gray-200 shadow-sm" />
+                        @elseif($logoUrl)
+                            <img src="{{ $logoUrl }}" alt="" class="w-20 h-20 rounded-xl object-cover border border-gray-200 shadow-sm" />
+                        @else
+                            <div class="w-20 h-20 rounded-xl bg-gray-100 border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14"/></svg>
+                            </div>
+                        @endif
+                    </div>
+                    <div class="flex-1 min-w-[200px]">
+                        <label class="block cursor-pointer">
+                            <span class="inline-flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-gray-200 hover:border-amber-300 hover:bg-amber-50/30 text-sm text-gray-600 transition-all">
+                                <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                                <span>Upload image</span>
+                            </span>
+                            <input wire:model="logo" type="file" accept="image/*" class="hidden" />
+                        </label>
+                        <p class="text-xs text-gray-400 mt-2">PNG, JPG up to 2MB. Square works best. Fetch uses your site’s favicon if no image is uploaded.</p>
+                        <div wire:loading wire:target="logo" class="text-xs text-amber-600 mt-1 inline-flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                            Uploading…
+                        </div>
+                    </div>
+                </div>
+                @error('logo') <p class="text-red-500 text-xs mt-1.5">{{ $message }}</p> @enderror
+            </div>
+
+            {{-- Category + Twitter (single line) --}}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Category <span class="text-red-400">*</span></label>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Category <span class="text-red-400">*</span></label>
                     <select wire:model="category_id" class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent cursor-pointer">
                         <option value="0">Select a category</option>
                         @foreach($categories as $cat)
@@ -292,21 +447,24 @@ new class extends Component {
                     @error('category_id') <p class="text-red-500 text-xs mt-1.5">{{ $message }}</p> @enderror
                 </div>
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Pricing Model <span class="text-red-400">*</span></label>
-                    <div class="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-200">
-                        @foreach(['free' => 'Free', 'freemium' => 'Freemium', 'paid' => 'Paid'] as $val => $label)
-                            <button type="button" wire:click="$set('pricing', '{{ $val }}')"
-                                class="flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-all text-center
-                                    {{ $pricing === $val ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
-                                {{ $label }}
-                            </button>
-                        @endforeach
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Twitter / X <span class="text-gray-400 font-normal text-xs">(optional)</span></label>
+                    <div class="relative">
+                        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">@</span>
+                        <input wire:model="twitter_handle" type="text" placeholder="yourhandle"
+                               class="w-full rounded-xl border border-gray-200 pl-8 pr-4 py-3 text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent focus:bg-white transition-all" />
                     </div>
                 </div>
+            </div>
+
+            {{-- Maker's comment --}}
+            <div class="pt-6 border-t border-gray-100">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Maker's comment <span class="text-gray-400 font-normal text-xs">(optional)</span></label>
+                <textarea wire:model="maker_comment" rows="3" placeholder="Why you built this, what problem it solves…"
+                          class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent focus:bg-white transition-all resize-y"></textarea>
             </div>
         </div>
         <div class="px-8 py-4 border-t border-gray-100 bg-gray-50/30 flex justify-end">
-            <button wire:click="nextStep" wire:loading.attr="disabled" class="gradient-amber text-white font-semibold px-7 py-2.5 rounded-xl shadow-md shadow-amber-500/20 hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center gap-2 text-sm">
+            <button wire:click="nextStep" wire:loading.attr="disabled" class="gradient-amber text-white font-semibold px-7 py-2.5 rounded-xl shadow-md shadow-amber-500/20 hover:shadow-lg hover:-translate-y-0.5 transition-all inline-flex items-center gap-2 text-sm">
                 Continue
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
             </button>
@@ -314,76 +472,8 @@ new class extends Component {
     </div>
     @endif
 
-    {{-- Step 2: Details --}}
+    {{-- Step 2: Listing Type --}}
     @if($step === 2)
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div class="px-8 py-5 border-b border-gray-100 bg-gray-50/50">
-            <h2 class="text-lg font-bold text-gray-900">Add more details</h2>
-            <p class="text-sm text-gray-500 mt-0.5">Help people understand what makes your product special</p>
-        </div>
-        <div class="p-8 space-y-5">
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Description <span class="text-red-400">*</span></label>
-                <textarea wire:model="description" rows="5" placeholder="Describe what your product does, who it's for, and what makes it unique..."
-                          class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent focus:bg-white transition-all"></textarea>
-                @error('description') <p class="text-red-500 text-xs mt-1.5">{{ $message }}</p> @enderror
-            </div>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Product Logo</label>
-                <div class="flex items-start gap-4">
-                    @if($logo)
-                        <img src="{{ $logo->temporaryUrl() }}" class="w-16 h-16 rounded-2xl object-cover border-2 border-gray-100 shadow-sm shrink-0" />
-                    @else
-                        <div class="w-16 h-16 rounded-2xl bg-gray-100 border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 shrink-0">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                        </div>
-                    @endif
-                    <div class="flex-1">
-                        <label class="block w-full cursor-pointer">
-                            <div class="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center hover:border-amber-300 hover:bg-amber-50/30 transition-all">
-                                <svg class="w-6 h-6 text-gray-400 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                                <p class="text-xs text-gray-500"><span class="font-semibold text-amber-600">Click to upload</span> or drag and drop</p>
-                                <p class="text-[10px] text-gray-400 mt-0.5">PNG, JPG up to 2MB. Square recommended.</p>
-                            </div>
-                            <input wire:model="logo" type="file" accept="image/*" class="hidden" />
-                        </label>
-                        <div wire:loading wire:target="logo" class="text-xs text-amber-500 mt-2 flex items-center gap-1">
-                            <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                            Uploading...
-                        </div>
-                    </div>
-                </div>
-                @error('logo') <p class="text-red-500 text-xs mt-1.5">{{ $message }}</p> @enderror
-            </div>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Twitter / X Handle <span class="text-gray-400 font-normal text-xs">(optional)</span></label>
-                <div class="relative">
-                    <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">@</span>
-                    <input wire:model="twitter_handle" type="text" placeholder="yourhandle"
-                           class="w-full rounded-xl border border-gray-200 pl-8 pr-4 py-3 text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent focus:bg-white transition-all" />
-                </div>
-            </div>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Maker's Comment <span class="text-gray-400 font-normal text-xs">(optional — shown on product page)</span></label>
-                <textarea wire:model="maker_comment" rows="3" placeholder="Why did you build this? What problem does it solve for you?"
-                          class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent focus:bg-white transition-all"></textarea>
-            </div>
-        </div>
-        <div class="px-8 py-4 border-t border-gray-100 bg-gray-50/30 flex justify-between">
-            <button wire:click="prevStep" class="text-gray-600 hover:text-gray-800 font-medium px-5 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all text-sm flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
-                Back
-            </button>
-            <button wire:click="nextStep" wire:loading.attr="disabled" class="gradient-amber text-white font-semibold px-7 py-2.5 rounded-xl shadow-md shadow-amber-500/20 hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center gap-2 text-sm">
-                Continue
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
-            </button>
-        </div>
-    </div>
-    @endif
-
-    {{-- Step 3: Listing Type --}}
-    @if($step === 3)
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div class="px-8 py-5 border-b border-gray-100 bg-gray-50/50">
             <h2 class="text-lg font-bold text-gray-900">How do you want to list?</h2>
@@ -452,8 +542,8 @@ new class extends Component {
     </div>
     @endif
 
-    {{-- Step 4: Choose Plan (context-aware based on listing_type) --}}
-    @if($step === 4)
+    {{-- Step 3: Choose Plan (context-aware based on listing_type) --}}
+    @if($step === 3)
     @php $plans = $this->getAvailablePlans(); @endphp
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div class="px-8 py-5 border-b border-gray-100 bg-gray-50/50">
@@ -531,8 +621,8 @@ new class extends Component {
     </div>
     @endif
 
-    {{-- Step 5: Review --}}
-    @if($step === 5)
+    {{-- Step 4: Review --}}
+    @if($step === 4)
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div class="px-8 py-5 border-b border-gray-100 bg-gray-50/50">
             <h2 class="text-lg font-bold text-gray-900">Review & Submit</h2>
@@ -544,6 +634,8 @@ new class extends Component {
                 <div class="flex items-start gap-4">
                     @if($logo)
                         <img src="{{ $logo->temporaryUrl() }}" class="w-14 h-14 rounded-2xl object-cover border border-gray-200 shadow-sm" />
+                    @elseif($logoUrl)
+                        <img src="{{ $logoUrl }}" alt="" class="w-14 h-14 rounded-2xl object-cover border border-gray-200 shadow-sm" />
                     @else
                         <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-xl text-white font-bold shadow-sm">
                             {{ strtoupper(substr($name, 0, 1)) }}
@@ -565,13 +657,6 @@ new class extends Component {
                 <div class="flex items-center justify-between py-3">
                     <span class="text-sm text-gray-500">Category</span>
                     <span class="text-sm font-medium text-gray-900">{{ $categories->firstWhere('id', $category_id)?->name ?? '—' }}</span>
-                </div>
-                <div class="flex items-center justify-between py-3">
-                    <span class="text-sm text-gray-500">Product Pricing</span>
-                    <span class="text-xs px-2.5 py-1 rounded-full font-medium
-                        {{ $pricing === 'free' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : ($pricing === 'freemium' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-purple-50 text-purple-600 border border-purple-100') }}">
-                        {{ ucfirst($pricing) }}
-                    </span>
                 </div>
                 <div class="flex items-center justify-between py-3">
                     <span class="text-sm text-gray-500">Listing Type</span>
@@ -615,14 +700,10 @@ new class extends Component {
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
                 Back
             </button>
-            <button wire:click="submit" wire:loading.attr="disabled" class="gradient-amber text-white font-bold px-8 py-3 rounded-xl shadow-lg shadow-amber-500/20 hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2 text-sm">
-                <span wire:loading.remove wire:target="submit" class="flex items-center gap-2">
-                    🚀 Submit to Launchory
-                </span>
-                <span wire:loading wire:target="submit" class="flex items-center gap-2">
-                    <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                    Submitting...
-                </span>
+            <button wire:click="submit" wire:loading.attr="disabled" class="gradient-amber text-white font-bold px-8 py-3 rounded-xl shadow-lg shadow-amber-500/20 hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm">
+                <svg wire:loading wire:target="submit" class="w-4 h-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                <span wire:loading.remove wire:target="submit">🚀 Submit to Launchory</span>
+                <span wire:loading wire:target="submit">Submitting…</span>
             </button>
         </div>
     </div>
@@ -655,6 +736,11 @@ new class extends Component {
     Livewire.on('redirect-to-checkout', (payload) => {
         const url = typeof payload === 'string' ? payload : (payload?.url ?? payload?.[0]);
         if (url) window.location.href = url;
+    });
+    Livewire.on('scroll-to-step', () => {
+        requestAnimationFrame(() => {
+            document.getElementById('submit-product-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
     });
 </script>
 @endscript

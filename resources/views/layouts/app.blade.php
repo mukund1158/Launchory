@@ -4,6 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
+        <link rel="icon" type="image/png" href="{{ asset('images/logo/launchory-favicon.png') }}">
 
         {!! SEOMeta::generate() !!}
         {!! OpenGraph::generate() !!}
@@ -48,9 +49,8 @@
                 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div class="flex items-center justify-between h-16">
                         {{-- Left: Logo --}}
-                        <a href="{{ route('home') }}" class="flex items-center gap-2.5 font-extrabold text-xl group">
-                            <span class="text-2xl group-hover:scale-110 transition-transform duration-200">🚀</span>
-                            <span class="bg-gradient-to-r from-amber-500 to-orange-500 bg-clip-text text-transparent">Launchory</span>
+                        <a href="{{ route('home') }}" class="flex items-center group">
+                            <img src="{{ asset('images/logo/launchory-logo.png') }}" alt="Launchory" class="h-48 w-auto group-hover:opacity-90 transition-opacity" />
                         </a>
 
                         {{-- Center: Nav links (desktop) --}}
@@ -204,10 +204,11 @@
                     <div class="grid grid-cols-1 md:grid-cols-12 gap-10">
                         {{-- Left: Branding --}}
                         <div class="md:col-span-4">
-                            <a href="{{ route('home') }}" class="flex items-center gap-2.5 font-extrabold text-xl">
-                                <span class="text-2xl">🚀</span>
-                                <span class="text-white">Launchory</span>
-                            </a>
+                            <div class="h-16">
+                                <a href="{{ route('home') }}" class="h-12 -ml-6 inline-flex items-center">
+                                    <img src="{{ asset('images/logo/launchory-logo.png') }}" alt="Launchory" class="h-48 w-auto" />
+                                </a>
+                            </div>
                             <p class="text-gray-400 text-sm mt-3 leading-relaxed max-w-xs">The launchpad for indie makers. Launch your product, get discovered, and grow your audience.</p>
                             <div class="flex items-center gap-3 mt-5">
                                 <a href="https://x.com/launchory" target="_blank" rel="noopener" class="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-gray-400 hover:text-white transition-all">

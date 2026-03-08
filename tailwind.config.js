@@ -14,6 +14,10 @@ export default {
             fontFamily: {
                 sans: ['Figtree', ...defaultTheme.fontFamily.sans],
             },
+            // Custom negative margin utility for -ml-6
+            margin: {
+                '-6': '-1.5rem',
+            },
         },
     },
 
